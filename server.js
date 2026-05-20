@@ -1,8 +1,10 @@
 const express = require("express");
 const app = express();
+const cors = require("cors");
 require("dotenv").config();
 
 app.use(express.json());
+app.use(cors());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use("/assets", express.static("assets"));
@@ -12,23 +14,56 @@ app.post("/createOrder", async (req, res) => {
     req.body;
 
   const payload = {
+    order_amount: amount,
     order_currency: "INR",
-    order_amount: amount.toString(),
     customer_details: {
       customer_id,
-      customer_phone,
+      customer_phone: customer_phone,
       customer_name: customer_name || "",
       customer_email: customer_email || "",
     },
     order_meta: {
-      return_url: "http://localhost:3000/return?order_id={order_id}",
+      return_url:
+        "https://pg-integration.onrender.com/return?order_id={order_id}",
+      // payment_methods: "cash",
+    },
+
+
+    products: {
+      one_click_checkout: {
+        enabled: true,
+        conditions: [
+          {
+            action: "ALLOW",
+            values: ["checkoutCollectAddress", "checkoutAuthenticate"],
+            // values: ["checkoutCollectAddress", "checkoutAuthenticate", "skipInitialAuthentication"],
+            key: "features",
+          }
+        ],
+      },
+    },
+    cart_details: {
+      cart_items: [
+        {
+          item_id: "DEMO_ITEM_001",
+          item_name: "Demo Product",
+          item_description: "Sample product description",
+          item_details_url: "https://example.com/product/demo",
+          item_image_url: "https://placehold.co/400x400?text=Product",
+          item_original_unit_price: amount,
+          item_discounted_unit_price: amount,
+          item_quantity: 1,
+          item_currency: "INR",
+        },
+      ],
     },
   };
-  console.log(process.env.APP_ID);
+
   const options = {
     method: "POST",
     headers: {
-      "x-api-version": "2025-01-01",
+      Accept: "application/json",
+      "x-api-version": "2022-09-01",
       "x-client-id": process.env.APP_ID,
       "x-client-secret": process.env.APP_SECRET,
       "Content-Type": "application/json",
@@ -36,15 +71,23 @@ app.post("/createOrder", async (req, res) => {
     body: JSON.stringify(payload),
   };
 
-  const CFresponse = await fetch(
-    "https://sandbox.cashfree.com/pg/orders",
-    options
-  );
-  const data = await CFresponse.json();
+  try {
+    const CFresponse = await fetch(
+      "https://sandbox.cashfree.com/pg/orders",
+      options
+    );
+    const data = await CFresponse.json();
 
-  const { payment_session_id, order_id } = data;
-  const resToFront = { success: true, payment_session_id, order_id };
-  res.send(resToFront);
+    if (!CFresponse.ok) {
+      throw new Error(data.message || "Failed to create order");
+    }
+
+    const { payment_session_id, order_id } = data;
+    res.json({ success: true, payment_session_id, order_id });
+  } catch (error) {
+    console.error("Error creating order:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 app.get("/return", (req, res) => {
@@ -53,10 +96,12 @@ app.get("/return", (req, res) => {
 
 app.post("/verifyPayment", async (req, res) => {
   const { order_id } = req.body;
+
   const options = {
     method: "GET",
     headers: {
-      "x-api-version": "2025-01-01",
+      Accept: "application/json",
+      "x-api-version": "2022-09-01",
       "x-client-id": process.env.APP_ID,
       "x-client-secret": process.env.APP_SECRET,
       "Content-Type": "application/json",
@@ -69,7 +114,7 @@ app.post("/verifyPayment", async (req, res) => {
       options
     );
     const data = await response.json();
-    // console.log(response);
+
     if (!response.ok) {
       throw new Error(data.message || "Failed to verify payment");
     }
@@ -81,6 +126,6 @@ app.post("/verifyPayment", async (req, res) => {
   }
 });
 
-app.listen(3000, (req, res) => {
+app.listen(3000, () => {
   console.log("Server running");
 });

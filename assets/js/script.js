@@ -53,7 +53,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
     const options = {
       paymentSessionId: payment_session_id,
-      redirectTarget: "_self",
+      redirectTarget: "_modal",
     };
     console.log(payment_session_id);
     cashfree.checkout(options);
